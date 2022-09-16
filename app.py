@@ -92,7 +92,6 @@ def venues():
 
   dist_locale=models.Venue.query.with_entities((models.Venue.id), (models.Venue.city) , (models.Venue.state) )\
     .distinct().order_by(models.Venue.city).order_by(models.Venue.state).all()
-  print(dist_locale)
 
   all_locations = []
   for result in dist_locale:
