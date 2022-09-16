@@ -11,7 +11,6 @@ from wtforms import (
 )
 import phonenumbers
 from phonenumbers.phonenumberutil import NumberParseException
-from models import Artist, Venue, Show
 from wtforms.fields import TelField
 from wtforms.validators import DataRequired, ValidationError, StopValidation, URL
 
@@ -29,6 +28,8 @@ class ShowForm(FlaskForm):
     )
 
     def check_validshow(self, a_id, v_id):
+
+        from models import Artist, Venue
         a_id = self.artist_id.data
         v_id = self.venue_id.data
         artist = Artist.query.filter_by(id=a_id).all()
@@ -183,6 +184,7 @@ class VenueForm(FlaskForm):
             return False
 
     def check_for_venuename(self, a_name):
+        from models import Venue
         a_name = self.name.data
         existing_venues = Venue.query.filter_by(name=a_name).all()
         print(existing_venues)
@@ -322,6 +324,7 @@ class ArtistForm(FlaskForm):
 
 
     def check_for_artistname(self, a_name):
+        from models import Artist
         a_name = self.name.data
         existing_artist = Artist.query.filter_by(name=a_name).all()
         print(existing_artist)

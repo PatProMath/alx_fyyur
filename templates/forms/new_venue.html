@@ -1,8 +1,12 @@
 {% extends 'layouts/main.html' %}
 {% block title %}New Venue{% endblock %}
+
+
 {% block content %}
   <div class="form-wrapper">
     <form method="post" class="form" action="/venues/create">
+      {{ form.hidden_tag() }}
+      <!--'{{ form.csrf_token }}' is not required according to WTF-Docs:https://flask-wtf.readthedocs.io/en/0.15.x/quickstart/#validating-forms -->
       <h3 class="form-heading">List a new venue <a href="{{ url_for('index') }}" title="Back to homepage"><i class="fa fa-home pull-right"></i></a></h3>
       <div class="form-group">
         <label for="name">Name</label>
@@ -30,13 +34,13 @@
       <div class="form-group">
         <label for="genres">Genres</label>
         <small>Ctrl+Click to select multiple</small>
-        {{ form.genres(class_ = 'form-control', placeholder='Genres, separated by commas', autofocus = true) }}
+        {{ form.genres(class_ = 'form-control', placeholder='Genres, separated by commas', autofocus = true, size=15) }}
       </div>
       
       <div class="form-group">
           <label for="facebook_link">Facebook Link</label>
           {{ form.facebook_link(class_ = 'form-control', placeholder='http://', autofocus = true) }}
-       </div>
+      </div>
       
        <div class="form-group">
           <label for="image_link">Image Link</label>

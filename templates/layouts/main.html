@@ -60,7 +60,7 @@
                 <input class="form-control"
                   type="search"
                   name="search_term"
-                  placeholder="Find a venue"
+                  placeholder="Find a venue by name, city or state"
                   aria-label="Search">
               </form>
               {% endif %}
@@ -71,7 +71,7 @@
                 <input class="form-control"
                   type="search"
                   name="search_term"
-                  placeholder="Find an artist"
+                  placeholder="Find an artist by name, city or state"
                   aria-label="Search">
               </form>
               {% endif %}
@@ -88,15 +88,30 @@
 
     <!-- Begin page content -->
     <main id="content" role="main" class="container">
+      <!-- Implementing flashes for better UX -->
+      {% with errors = get_flashed_messages(category_filter=["error"]) %}
+        {% if errors %}
+        <div class="alert alert-danger mb-3">
+          <a class="close" data-dismiss="alert" href="#">×</a>
+          <ul>
+            {%- for msg in errors %}
+            <li>{{ msg }}</li>
+            {% endfor -%}
+          </ul>
+        </div>
+        {% endif %}
+      {% endwith %}
 
-      {% with messages = get_flashed_messages() %}
-        {% if messages %}
-          {% for message in messages %}
-            <div class="alert alert-block alert-info fade in">
-              <a class="close" data-dismiss="alert">&times;</a>
-              {{ message }}
-            </div>
-          {% endfor %}
+      {% with successes = get_flashed_messages(category_filter=["success"]) %}
+        {% if successes %}
+        <div class="alert alert-info mb-3">
+          <a class="close" data-dismiss="alert" href="#">×</a>
+          <ul>
+            {%- for msg in successes %}
+            <li>{{ msg }}</li>
+            {% endfor -%}
+          </ul>
+        </div>
         {% endif %}
       {% endwith %}
 

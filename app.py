@@ -13,7 +13,7 @@ from flask_migrate import Migrate
 import logging
 from logging import Formatter, FileHandler
 from forms import *
-from models import Artist, Venue, Show
+
 #----------------------------------------------------------------------------#
 # App Config.
 #----------------------------------------------------------------------------#
@@ -54,10 +54,12 @@ app.jinja_env.filters['datetime'] = format_datetime
 # Controllers.
 #----------------------------------------------------------------------------#
 
+import models
+
 @app.route('/')
 def index():
-  all_artists=Artist.query.order_by(db.desc(Artist.created_at)).limit(10).all()
-  all_venues= Venue.query.order_by(db.desc(Venue.created_at)).limit(10).all()
+  all_artists=models.Artist.query.order_by(db.desc(models.Artist.created_at)).limit(10).all()
+  all_venues= models.Venue.query.order_by(db.desc(models.Venue.created_at)).limit(10).all()
   return render_template('pages/home.html', artists=all_artists, venues=all_venues)
 
 
@@ -78,18 +80,18 @@ def venues():
   #   venues = fields.List(fields.Nested(VenueSchema, many=True))
 
   def upcoming_shows(id, city, state):
-    num_of_shows = Venue.query\
-      .with_entities(Venue.id, Show.start_time)\
-      .join(Show, id == Show.venue_id)\
-      .join(Artist, Artist.id == Show.artist_id)\
-      .filter( (Show.start_time > datetime.now()) & 
-        (Venue.city==city) &
-        (Venue.state==state) )\
+    num_of_shows = models.Venue.query\
+      .with_entities(models.Venue.id, models.Show.start_time)\
+      .join(models.Show, id == models.Show.venue_id)\
+      .join(models.Artist, models.Artist.id == models.Show.artist_id)\
+      .filter( (models.Show.start_time > datetime.now()) & 
+        (models.Venue.city==city) &
+        (models.Venue.state==state) )\
       .count()
     return num_of_shows
 
-  dist_locale=Venue.query.with_entities((Venue.id), (Venue.city) , (Venue.state) )\
-    .distinct().order_by(Venue.city).order_by(Venue.state).all()
+  dist_locale=models.Venue.query.with_entities((models.Venue.id), (models.Venue.city) , (models.Venue.state) )\
+    .distinct().order_by(models.Venue.city).order_by(models.Venue.state).all()
   print(dist_locale)
 
   all_locations = []
@@ -99,7 +101,7 @@ def venues():
     city = result.city
     state = result.state
 
-    all_venues=Venue.query.filter(Venue.city==city, Venue.state==state).all()
+    all_venues=models.Venue.query.filter(models.Venue.city==city, models.Venue.state==state).all()
 
     for a_venue in all_venues:
       if result.city==a_venue.city and result.state==a_venue.state: #My issue is getting another result set of all venues for me to compare their location against.
@@ -130,19 +132,19 @@ def venues():
 @app.route('/venues/search', methods=['POST'])
 def search_venues():
   def upcoming_shows(id):
-    num_of_shows = Venue.query\
-      .with_entities(Venue.id, Show.start_time)\
-      .join(Show, id == Show.venue_id)\
-      .join(Artist, Artist.id == Show.artist_id)\
-      .filter( (Show.start_time > datetime.now()))\
+    num_of_shows = models.Venue.query\
+      .with_entities(models.Venue.id, models.Show.start_time)\
+      .join(models.Show, id == models.Show.venue_id)\
+      .join(models.Artist, models.Artist.id == models.Show.artist_id)\
+      .filter( (models.Show.start_time > datetime.now()))\
       .count()
     return num_of_shows
 
   search_term=request.form.get('search_term', '')
 
-  search = Venue.query.filter(Venue.name.ilike(r"%{}%".format(search_term))   |
-                        Venue.city.ilike(r"%{}%".format(search_term))    |
-                        Venue.state.ilike(r"%{}%".format(search_term))).order_by(Venue.id)
+  search = models.Venue.query.filter(models.Venue.name.ilike(r"%{}%".format(search_term))   |
+                        models.Venue.city.ilike(r"%{}%".format(search_term))    |
+                        models.Venue.state.ilike(r"%{}%".format(search_term))).order_by(models.Venue.id)
   search_results = search.all()
   count_of_results = search.count()
 
@@ -167,18 +169,18 @@ def search_venues():
 @app.route('/venues/<int:venue_id>')
 def show_venue(venue_id):
   id = venue_id
-  venue = Venue.query.get(id)
+  venue = models.Venue.query.get(id)
   venue_dict_data = venue._asdict()
 
   shows_list = list(
-    Show.query.with_entities(Show.artist_id, Artist.name.label('artist_name'), Artist.image_link.label('image_link'), Show.start_time)\
-      .filter(Show.artist_id == Artist.id, Show.venue_id == id)
+    models.Show.query.with_entities(models.Show.artist_id, models.Artist.name.label('artist_name'), models.Artist.image_link.label('image_link'), models.Show.start_time)\
+      .filter(models.Show.artist_id == models.Artist.id, models.Show.venue_id == id)
       .all()
   )
 # shows_list = list(
-#     Venue.query.with_entities(Venue.id, Artist.id, Artist.name, Artist.image_link,Show.start_time)\
-#       .join(Show, venue.id == Show.venue_id)
-#       .join(Artist, Artist.id == Show.artist_id).all()
+#     models.Venue.query.with_entities(models.Venue.id, models.Artist.id, models.Artist.name, models.Artist.image_link,models.Show.start_time)\
+#       .join(models.Show, venue.id == models.Show.venue_id)
+#       .join(models.Artist, models.Artist.id == models.Show.artist_id).all()
 #   ) ERROR: sqlalchemy.exc.InvalidRequestError: Can't determine which FROM clause to join from, there are multiple FROMS which can join to this entity. Please use the .select_from() method to establish an explicit left side, as well as providing an explicit ON clause if not present already to help resolve the ambiguity.
 # sqlalchemy.exc.ProgrammingError: (psycopg2.errors.DuplicateAlias) table name "artists" specified more than once
 # GIVES ISSUES, BUT I DON'T KNOW WHY! What are the BEST PRACTICES IN FLASK-SQLALCHEMY?
@@ -220,7 +222,7 @@ def show_venue(venue_id):
 
   return render_template('pages/show_venue.html', venue=venue_dict_data)
 
-#  Create Venue
+#  Create models.Venue
 #  ----------------------------------------------------------------
 
 @app.route('/venues/create', methods=['GET'])
@@ -244,7 +246,7 @@ def create_venue_submission():
   else: #If there are no errors from the validations
 
     try:
-      venue=Venue(
+      venue=models.Venue(
         name = form.name.data,
         city = form.city.data,
         state = form.state.data,
@@ -259,11 +261,11 @@ def create_venue_submission():
       )
       db.session.add(venue)
       db.session.commit()
-      flash(f'Venue ' + request.form['name'] + ' was successfully listed!', 'success')
+      flash(f'models.Venue ' + request.form['name'] + ' was successfully listed!', 'success')
     except Exception:
       print(sys.exc_info())
       db.session.rollback()
-      flash(f'An error occurred. Venue ' + form.name.data + ' could not be listed.', 'error')
+      flash(f'An error occurred. models.Venue ' + form.name.data + ' could not be listed.', 'error')
     finally:
       db.session.close()
     return render_template('pages/home.html')
@@ -273,14 +275,14 @@ def create_venue_submission():
 @app.route('/venues/<venue_id>/delete', methods=['GET','DELETE'])
 def delete_venue(venue_id):
   try:
-    venue_to_delete = Venue.query.get_or_404(venue_id, description="There is no venue with ID {}".format(venue_id))
+    venue_to_delete = models.Venue.query.get_or_404(venue_id, description="There is no venue with ID {}".format(venue_id))
     db.session.delete(venue_to_delete)
     db.session.commit()
     flash(f'The venue was successfully deleted!')
   except Exception:
     print(sys.exc_info())
     db.session.rollback()
-    flash(f'Venue could not be deleted')
+    flash(f'models.Venue could not be deleted')
   finally:
     db.session.close()
   return redirect(url_for('index', artists=artists, venues=venues))
@@ -289,7 +291,7 @@ def delete_venue(venue_id):
 #  ----------------------------------------------------------------
 @app.route('/artists')
 def artists():
-  all_artists = Artist.query.with_entities(Artist.id, Artist.name).all()
+  all_artists = models.Artist.query.with_entities(models.Artist.id, models.Artist.name).all()
   
   all_artists_list = []
   for an_artist in all_artists:
@@ -304,19 +306,19 @@ def artists():
 @app.route('/artists/search', methods=['POST'])
 def search_artists():
   def upcoming_shows(id):
-    num_of_shows = Artist.query\
-      .with_entities(Artist.id, Show.start_time)\
-      .join(Show, id == Show.artist_id)\
-      .join(Venue, Venue.id == Show.venue_id)\
-      .filter( (Show.start_time > datetime.now())) \
+    num_of_shows = models.Artist.query\
+      .with_entities(models.Artist.id, models.Show.start_time)\
+      .join(models.Show, id == models.Show.artist_id)\
+      .join(models.Venue, models.Venue.id == models.Show.venue_id)\
+      .filter( (models.Show.start_time > datetime.now())) \
       .count()
     return num_of_shows
 
   search_term=request.form.get('search_term', '')
 
-  search = Artist.query.filter(Artist.name.ilike(r"%{}%".format(search_term))     | 
-                Artist.city.ilike(r"%{}%".format(search_term))  |  
-                Artist.state.ilike(r"%{}%".format(search_term))).order_by(Artist.id)
+  search = models.Artist.query.filter(models.Artist.name.ilike(r"%{}%".format(search_term))     | 
+                models.Artist.city.ilike(r"%{}%".format(search_term))  |  
+                models.Artist.state.ilike(r"%{}%".format(search_term))).order_by(models.Artist.id)
   search_results = search.all()
   count_of_results = search.count()
 
@@ -340,13 +342,13 @@ def search_artists():
 @app.route('/artists/<int:artist_id>')
 def show_artist(artist_id):
   id = artist_id
-  artist = Artist.query.get(id)
+  artist = models.Artist.query.get(id)
   artist_dict_data = artist._asdict()
 
   shows_list = list(
-    Show.query.with_entities(Show.venue_id, Show.artist_id, Venue.name.label('venue_name'), Venue.image_link.label('image_link'), Show.start_time)\
-      .join(Venue, Venue.id == Show.venue_id )
-      .filter(Show.artist_id == id, Show.venue_id == Venue.id)
+    models.Show.query.with_entities(models.Show.venue_id, models.Show.artist_id, models.Venue.name.label('venue_name'), models.Venue.image_link.label('image_link'), models.Show.start_time)\
+      .join(models.Venue, models.Venue.id == models.Show.venue_id )
+      .filter(models.Show.artist_id == id, models.Show.venue_id == models.Venue.id)
       .all()
   )
 
@@ -392,7 +394,7 @@ def show_artist(artist_id):
 #  ----------------------------------------------------------------
 @app.route('/artists/<int:artist_id>/edit', methods=['GET'])
 def edit_artist(artist_id):
-  get_artist = Artist.query.get_or_404(artist_id, description='There is no artist data with the ID {}'.format(artist_id))
+  get_artist = models.Artist.query.get_or_404(artist_id, description='There is no artist data with the ID {}'.format(artist_id))
   artist_dict = get_artist._asdict()
 
   form = ArtistForm(data=artist_dict) # Or we can have form = ArtistForm(obj=get_artist)
@@ -403,7 +405,7 @@ def edit_artist(artist_id):
 @app.route('/artists/<int:artist_id>/edit', methods=['POST'])
 def edit_artist_submission(artist_id):
   id=artist_id
-  artist=Artist.query.get(id)
+  artist=models.Artist.query.get(id)
   form = ArtistForm(obj=artist)
   if request.method == 'POST': # Adding this check for a POST method proved to be the only 
     #way to ensure that the application would accept the updated value instead of the old one.
@@ -423,18 +425,18 @@ def edit_artist_submission(artist_id):
         #https://wtforms.readthedocs.io/en/3.0.x/crash_course/?highlight=obj#editing-existing-objects
         #But it can be destructive.
         db.session.commit()
-        flash(f'Artist ' + form.name.data + ' was successfully edited!', 'success')
+        flash(f'models.Artist ' + form.name.data + ' was successfully edited!', 'success')
       except Exception:
         print(sys.exc_info())
         db.session.rollback()
-        flash(f'An error occurred. Artist ' + request.form['name'] + ' was not updated.', 'error')
+        flash(f'An error occurred. models.Artist ' + request.form['name'] + ' was not updated.', 'error')
       finally:
         db.session.close()
       return redirect(url_for('show_artist', artist_id=id))
 
 @app.route('/venues/<int:venue_id>/edit', methods=['GET'])
 def edit_venue(venue_id):
-  get_venue = Venue.query.get_or_404(venue_id)
+  get_venue = models.Venue.query.get_or_404(venue_id)
   
   form = VenueForm(obj=get_venue)
 
@@ -442,7 +444,7 @@ def edit_venue(venue_id):
 
 @app.route('/venues/<int:venue_id>/edit', methods=['POST'])
 def edit_venue_submission(venue_id):
-  venue=Venue.query.get(venue_id)
+  venue=models.Venue.query.get(venue_id)
   form = VenueForm(obj=venue)
   if request.method == 'POST': 
     if form.validate_on_submit()==False or form.validate_venuephone(form.phone.data) == False:
@@ -457,17 +459,17 @@ def edit_venue_submission(venue_id):
         
         form.populate_obj(venue)
         db.session.commit()
-        flash(f'Artist ' + form.name.data + ' was successfully edited!', 'success')
+        flash(f'models.Artist ' + form.name.data + ' was successfully edited!', 'success')
       except Exception:
         print(sys.exc_info())
         db.session.rollback()
-        flash(f'An error occurred. Venue ' + request.form['name'] + ' was not updated.', 'error')
+        flash(f'An error occurred. models.Venue ' + request.form['name'] + ' was not updated.', 'error')
       finally:
         db.session.close()
       return redirect(url_for('show_venue', venue_id=venue_id))
   
 
-#  Create Artist
+#  Create models.Artist
 #  ----------------------------------------------------------------
 
 @app.route('/artists/create', methods=['GET'])
@@ -490,7 +492,7 @@ def create_artist_submission():
   else: #If there are no errors from the validations
 
     try:
-      artist=Artist(
+      artist=models.Artist(
         name = form.name.data,
         city = form.city.data,
         state = form.state.data,
@@ -504,29 +506,29 @@ def create_artist_submission():
       )
       db.session.add(artist)
       db.session.commit()
-      flash(f'Artist ' + form.name.data + ' was successfully listed!', 'success')
+      flash(f'models.Artist ' + form.name.data + ' was successfully listed!', 'success')
     except Exception:
       print(sys.exc_info())
       db.session.rollback()
-      flash(f'An error occurred. Artist ' + request.form['name'] + ' could not be listed.', 'error')
+      flash(f'An error occurred. models.Artist ' + request.form['name'] + ' could not be listed.', 'error')
     finally:
       db.session.close()
     return render_template('pages/home.html')
 
-#  Delete Artist
+#  Delete models.Artist
 #  ----------------------------------------------------------------
 
 @app.route('/artists/<artist_id>/delete', methods=['GET','DELETE'])
 def delete_artist(artist_id):
   try:
-    artist_to_delete = Artist.query.get_or_404(artist_id, description="There is no venue with ID {}".format(venue_id))
+    artist_to_delete = models.Artist.query.get_or_404(artist_id, description="There is no venue with ID {}".format(venue_id))
     db.session.delete(artist_to_delete)
     db.session.commit()
     flash(f'The artist was successfully deleted!')
   except Exception:
     print(sys.exc_info())
     db.session.rollback()
-    flash(f'Artist could not be deleted')
+    flash(f'models.Artist could not be deleted')
   finally:
     db.session.close()
   return redirect(url_for('index', artists=artists, venues=venues))
@@ -537,11 +539,11 @@ def delete_artist(artist_id):
 @app.route('/shows')
 def shows():
   
-  results = Show.query\
-    .with_entities(Show.venue_id, Venue.name.label('venue_name'), Show.artist_id, \
-      Artist.name.label('artist_name'), Artist.image_link, Show.start_time)\
-    .join(Artist, Show.artist_id == Artist.id)\
-    .join(Venue, Show.venue_id == Venue.id).all()
+  results = models.Show.query\
+    .with_entities(models.Show.venue_id, models.Venue.name.label('venue_name'), models.Show.artist_id, \
+      models.Artist.name.label('artist_name'), models.Artist.image_link, models.Show.start_time)\
+    .join(models.Artist, models.Show.artist_id == models.Artist.id)\
+    .join(models.Venue, models.Show.venue_id == models.Venue.id).all()
 
   show_list = []
   for show in results:
@@ -570,19 +572,19 @@ def create_show_submission():
     form.check_validshow(form.artist_id.data, form.venue_id.data) == True:
     try:
 
-      show = Show(
+      show = models.Show(
         artist_id =  form.artist_id.data,
         venue_id =  form.venue_id.data,
         start_time = form.start_time.data
       )
       db.session.add(show)
       db.session.commit()
-      flash(f'Show was successfully listed!', 'success')
+      flash(f'models.Show was successfully listed!', 'success')
 
     except Exception:
       print(sys.exc_info())
       db.session.rollback()
-      flash(f'An error occurred. Show could not be listed!', 'error')
+      flash(f'An error occurred. models.Show could not be listed!', 'error')
     finally:
       db.session.close()
 
