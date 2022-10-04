@@ -16,5 +16,6 @@ postgres
 python-dateutil==2.6.0
 phonenumbers
 flask-marshmallow
+sqlalchemy_utils
 SQLAlchemy==1.4.39
 Werkzeug==2.0.3

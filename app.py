@@ -13,6 +13,7 @@ from flask_migrate import Migrate
 import logging
 from logging import Formatter, FileHandler
 from forms import *
+from sqlalchemy_utils import force_auto_coercion
 
 #----------------------------------------------------------------------------#
 # App Config.
@@ -27,6 +28,8 @@ migrate = Migrate(app, db)
 #----------------------------------------------------------------------------#
 # Some Function Helpers.
 #----------------------------------------------------------------------------#
+force_auto_coercion()
+
 def flash_errors(form):
   # """Flashes form errors"""   From StackOverflow
   for field, errors in form.errors.items():
@@ -233,7 +236,7 @@ def create_venue_form():
 def create_venue_submission():
   form = VenueForm()
     
-  if form.validate_venuephone(form.phone.data)!=False or \
+  if form.validate_venuephone(form.phone.data) != True or \
      form.check_for_venuename(form.name.data)==True or \
       form.validate_on_submit()==False:
     
@@ -260,30 +263,43 @@ def create_venue_submission():
       )
       db.session.add(venue)
       db.session.commit()
-      flash(f'models.Venue ' + request.form['name'] + ' was successfully listed!', 'success')
+      flash(f'Venue ' + request.form['name'] + ' was successfully listed!', 'success')
     except Exception:
       print(sys.exc_info())
       db.session.rollback()
-      flash(f'An error occurred. models.Venue ' + form.name.data + ' could not be listed.', 'error')
+      flash(f'An error occurred. Venue ' + form.name.data + ' could not be listed.', 'error')
     finally:
       db.session.close()
-    return render_template('pages/home.html')
+    artists=models.Artist.query.order_by(db.desc(models.Artist.created_at)).limit(10).all()
+    venues= models.Venue.query.order_by(db.desc(models.Venue.created_at)).limit(10).all()
+    return render_template('pages/home.html', artists=artists, venues=venues)
   # see: https://flask.palletsprojects.com/en/2.2.x/patterns/flashing/
   # return render_template('pages/home.html')
 
-@app.route('/venues/<venue_id>/delete', methods=['GET','DELETE'])
+@app.route('/venues/<venue_id>/delete', methods=['GET'])
+def delete_venue_form(venue_id):
+  # Anything I might want to add goes HERE
+  form = DeleteForm()
+  venue_to_delete = models.Venue.query.get_or_404(venue_id, description="There is no venue with ID {}".format(venue_id))
+  return render_template('forms/delete_venue.html', form=form, venue=venue_to_delete)
+
+@app.route('/venues/<venue_id>/delete', methods=['POST','DELETE'])
 def delete_venue(venue_id):
-  try:
-    venue_to_delete = models.Venue.query.get_or_404(venue_id, description="There is no venue with ID {}".format(venue_id))
-    db.session.delete(venue_to_delete)
-    db.session.commit()
-    flash(f'The venue was successfully deleted!')
-  except Exception:
-    print(sys.exc_info())
-    db.session.rollback()
-    flash(f'models.Venue could not be deleted')
-  finally:
-    db.session.close()
+  form = DeleteForm()
+  if request.method == 'POST' and form.venue_id.data == venue_id: #
+    try:
+      venue_to_delete = models.Venue.query.get_or_404(venue_id, description="There is no venue with ID {}".format(venue_id))
+      db.session.delete(venue_to_delete)
+      db.session.commit()
+      flash(f'The venue was successfully deleted!', 'success')
+    except Exception:
+      print(sys.exc_info())
+      db.session.rollback()
+      flash(f'Venue could not be deleted', 'error')
+    finally:
+      db.session.close()
+  else:
+    flash(f'Venue ID does not exist')
   return redirect(url_for('index', artists=artists, venues=venues))
 
 #  Artists
@@ -396,7 +412,7 @@ def edit_artist(artist_id):
   get_artist = models.Artist.query.get_or_404(artist_id, description='There is no artist data with the ID {}'.format(artist_id))
   artist_dict = get_artist._asdict()
 
-  form = ArtistForm(data=artist_dict) # Or we can have form = ArtistForm(obj=get_artist)
+  form = ArtistForm(obj=get_artist) # Or we can have form = ArtistForm(data=artist_dict)
   #  https://wtforms.readthedocs.io/en/2.3.x/forms/#:~:text=obj%20%E2%80%93%20If%20formdata,are%20not%20present.
   
   return render_template('forms/edit_artist.html', form=form, artist=artist_dict)
@@ -405,7 +421,7 @@ def edit_artist(artist_id):
 def edit_artist_submission(artist_id):
   id=artist_id
   artist=models.Artist.query.get(id)
-  form = ArtistForm(obj=artist)
+  form = ArtistForm()
   if request.method == 'POST': # Adding this check for a POST method proved to be the only 
     #way to ensure that the application would accept the updated value instead of the old one.
     if form.validate_on_submit()==False or form.validate_artistphone(form.phone.data) == False:
@@ -419,16 +435,15 @@ def edit_artist_submission(artist_id):
     else: #If there are no errors from the validations
 
       try:
-        
-        form.populate_obj(artist) # Found out about this function and thought to try it out. 
-        #https://wtforms.readthedocs.io/en/3.0.x/crash_course/?highlight=obj#editing-existing-objects
-        #But it can be destructive.
+        artist.genres = request.form.getlist('genres')
+        form.populate_obj(artist)
         db.session.commit()
-        flash(f'models.Artist ' + form.name.data + ' was successfully edited!', 'success')
+        
+        flash(f'Artist ' + artist.name + ' was successfully edited!', 'success')
       except Exception:
         print(sys.exc_info())
         db.session.rollback()
-        flash(f'An error occurred. models.Artist ' + request.form['name'] + ' was not updated.', 'error')
+        flash(f'An error occurred. Artist ' + artist.name + ' was not updated.', 'error')
       finally:
         db.session.close()
       return redirect(url_for('show_artist', artist_id=id))
@@ -436,7 +451,6 @@ def edit_artist_submission(artist_id):
 @app.route('/venues/<int:venue_id>/edit', methods=['GET'])
 def edit_venue(venue_id):
   get_venue = models.Venue.query.get_or_404(venue_id)
-  
   form = VenueForm(obj=get_venue)
 
   return render_template('forms/edit_venue.html', form=form, venue=get_venue)
@@ -455,14 +469,14 @@ def edit_venue_submission(venue_id):
     else: #If there are no errors from the validations
 
       try:
-        
+        venue.genres = request.form.getlist('genres')
         form.populate_obj(venue)
         db.session.commit()
-        flash(f'models.Artist ' + form.name.data + ' was successfully edited!', 'success')
+        flash(f'Venue ' + venue.name + ' was successfully edited!', 'success')
       except Exception:
         print(sys.exc_info())
         db.session.rollback()
-        flash(f'An error occurred. models.Venue ' + request.form['name'] + ' was not updated.', 'error')
+        flash(f'An error occurred. Venue ' + request.form['name'] + ' was not updated.', 'error')
       finally:
         db.session.close()
       return redirect(url_for('show_venue', venue_id=venue_id))
@@ -505,29 +519,37 @@ def create_artist_submission():
       )
       db.session.add(artist)
       db.session.commit()
-      flash(f'models.Artist ' + form.name.data + ' was successfully listed!', 'success')
+      flash(f'Artist ' + form.name.data + ' was successfully listed!', 'success')
     except Exception:
       print(sys.exc_info())
       db.session.rollback()
-      flash(f'An error occurred. models.Artist ' + request.form['name'] + ' could not be listed.', 'error')
+      flash(f'An error occurred. Artist ' + request.form['name'] + ' could not be listed.', 'error')
     finally:
       db.session.close()
-    return render_template('pages/home.html')
+    artists=models.Artist.query.order_by(db.desc(models.Artist.created_at)).limit(10).all()
+    venues= models.Venue.query.order_by(db.desc(models.Venue.created_at)).limit(10).all()
+    return render_template('pages/home.html', artists=artists, venues=venues)
 
 #  Delete models.Artist
 #  ----------------------------------------------------------------
+@app.route('/artists/<artist_id>/delete', methods=['GET'])
+def delete_artist_form(artist_id):
+  # Anything I might want to add goes HERE
+  form = DeleteForm()
+  artist_to_delete = models.Artist.query.get_or_404(artist_id, description="There is no venue with ID {}".format(artist_id))
+  return render_template('forms/delete_artist.html', form=form, artist=artist_to_delete)
 
-@app.route('/artists/<artist_id>/delete', methods=['GET','DELETE'])
+@app.route('/artists/<artist_id>/delete', methods=['POST','DELETE'])
 def delete_artist(artist_id):
   try:
-    artist_to_delete = models.Artist.query.get_or_404(artist_id, description="There is no venue with ID {}".format(venue_id))
+    artist_to_delete = models.Artist.query.get_or_404(artist_id, description="There is no venue with ID {}".format(artist_id))
     db.session.delete(artist_to_delete)
     db.session.commit()
     flash(f'The artist was successfully deleted!')
   except Exception:
     print(sys.exc_info())
     db.session.rollback()
-    flash(f'models.Artist could not be deleted')
+    flash(f'Artist could not be deleted')
   finally:
     db.session.close()
   return redirect(url_for('index', artists=artists, venues=venues))
@@ -578,12 +600,12 @@ def create_show_submission():
       )
       db.session.add(show)
       db.session.commit()
-      flash(f'models.Show was successfully listed!', 'success')
+      flash(f'Show was successfully listed!', 'success')
 
     except Exception:
       print(sys.exc_info())
       db.session.rollback()
-      flash(f'An error occurred. models.Show could not be listed!', 'error')
+      flash(f'An error occurred. Show could not be listed!', 'error')
     finally:
       db.session.close()
 

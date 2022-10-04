@@ -1,7 +1,10 @@
 from datetime import datetime
+from statistics import mode
+from unicodedata import name
 from flask_wtf import FlaskForm
 from wtforms import (
     StringField, 
+    IntegerField,
     SelectField, 
     SelectMultipleField,
     TextAreaField, 
@@ -9,10 +12,10 @@ from wtforms import (
     BooleanField,
     ValidationError
 )
-import phonenumbers
+import phonenumbers, re
 from phonenumbers.phonenumberutil import NumberParseException
 from wtforms.fields import TelField
-from wtforms.validators import DataRequired, ValidationError, StopValidation, URL
+from wtforms.validators import DataRequired, InputRequired, ValidationError, URL, AnyOf
 
 class ShowForm(FlaskForm):
     artist_id = StringField(
@@ -33,9 +36,7 @@ class ShowForm(FlaskForm):
         a_id = self.artist_id.data
         v_id = self.venue_id.data
         artist = Artist.query.filter_by(id=a_id).all()
-        print(artist)
         venue = Venue.query.filter_by(id=v_id).all()
-        print(venue)
         if artist and venue:
             return True
         elif artist:
@@ -49,6 +50,17 @@ class ShowForm(FlaskForm):
             self.venue_id.errors += (ValidationError('Venue ID ' + v_id + ' does not exist!'),)
             return False
 
+class DeleteForm(FlaskForm):
+    # import models
+    # venues = list(models.Venue.query.with_entities(models.Venue.id).all())
+    # artists = list(models.Artist.query.with_entities(models.Artist.id).all())
+
+    artist_id = IntegerField(
+        'artist-id', validators= [DataRequired()] #, AnyOf(values=venues)
+    )
+    venue_id = IntegerField(
+        'venue-id', validators= [DataRequired()] #, AnyOf(values=artists)
+    )
 
 class VenueForm(FlaskForm):
     name = StringField(
@@ -173,14 +185,12 @@ class VenueForm(FlaskForm):
 
     def validate_venuephone(self, phone):
         phone = self.phone.data
-        try:
-            input_number = phonenumbers.parse(phone)
-            if not (phonenumbers.is_valid_number(input_number)):
-                print(self.form_errors)
-                self.phone.errors += (ValidationError('Invalid phone number.'),)
-                return False
-        except NumberParseException as e:
-            self.phone.errors += (ValidationError('Not a phone number string.'),)
+        pattern=re.compile("[0-9]{3}[-\s]?[0-9]{3}[-\s]?[0-9]{3}")
+        if pattern.match(phone):
+            return True
+        else:
+            print(self.form_errors)
+            self.phone.errors += (ValidationError('Invalid phone number.'),)
             return False
 
     def check_for_venuename(self, a_name):
@@ -301,7 +311,7 @@ class ArtistForm(FlaskForm):
      )
 
     website_link = StringField(
-        'website_link', validators=[DataRequired(), URL()]
+        'website_link'
      )
 
     seeking_venues = BooleanField( 'seeking_venue' )
@@ -312,14 +322,12 @@ class ArtistForm(FlaskForm):
 
     def validate_artistphone(self, phone):
         phone = self.phone.data
-        try:
-            input_number = phonenumbers.parse(phone)
-            if not (phonenumbers.is_valid_number(input_number)):
-                print(self.form_errors)
-                self.phone.errors += (ValidationError('Invalid phone number.'),)
-                return False
-        except NumberParseException as e:
-            self.phone.errors += (ValidationError('Not a phone number string.'),)
+        pattern=re.compile("[0-9]{3}[-\s]?[0-9]{3}[-\s]?[0-9]{3}")
+        if pattern.match(phone):
+            return True
+        else:
+            print(self.form_errors)
+            self.phone.errors += (ValidationError('Invalid phone number.'),)
             return False
 
 

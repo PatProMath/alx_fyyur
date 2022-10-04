@@ -1,10 +1,13 @@
 from datetime import datetime
 from app import db
 from sqlalchemy import inspect
+from sqlalchemy_utils import ScalarListType, force_auto_coercion
 
 #----------------------------------------------------------------------------#
 # Models.
 #----------------------------------------------------------------------------#
+
+force_auto_coercion()
 
 # Original Model
 # shows = db.Table(
@@ -36,7 +39,9 @@ class Venue(db.Model):
     state = db.Column(db.String(120), nullable=False)
     address = db.Column(db.String(120), nullable=False)
     phone = db.Column(db.String(120), nullable=False)
-    genres = db.Column(db.ARRAY(db.String), nullable=False)
+    genres = db.Column(
+      db.ARRAY(db.String).with_variant(ScalarListType(), 'postgresql'), nullable=False
+    )
     image_link = db.Column(db.String(500))
     facebook_link = db.Column(db.String(120))
     website_link = db.Column(db.String(500))
@@ -46,8 +51,8 @@ class Venue(db.Model):
     artists = db.relationship(
       "Show", 
       back_populates="venues", 
-      cascade='all, delete-orphan', 
-      lazy='joined'
+      cascade='all, delete-orphan',
+      lazy=False
     )
 
     def __repr__(self):
@@ -57,9 +62,6 @@ class Venue(db.Model):
       return {c.key: getattr(self, c.key)
         for c in inspect(self).mapper.column_attrs}
   
-  
-    # TODO: implement any missing fields, as a database migration using Flask-Migrate
-
 class Artist(db.Model):
     __tablename__ = 'artists'
  
@@ -68,7 +70,9 @@ class Artist(db.Model):
     city = db.Column(db.String(120))
     state = db.Column(db.String(120))
     phone = db.Column(db.String(120))
-    genres = db.Column(db.ARRAY(db.String), nullable=False)
+    genres = db.Column(
+      db.ARRAY(db.String).with_variant(ScalarListType(), 'postgresql'), nullable=False
+    )
     facebook_link = db.Column(db.String(120))
     image_link = db.Column(db.String(500))
     website_link = db.Column(db.String(500))
@@ -79,7 +83,7 @@ class Artist(db.Model):
       "Show", 
       back_populates="artists", 
       cascade='all, delete-orphan', 
-      lazy='joined'
+      lazy=False
     )
 
     def __repr__(self):

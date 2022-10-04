@@ -1,0 +1,18 @@
+{% extends 'layouts/main.html' %}
+{% block title %}Delete Venue{% endblock %}
+{% block content %}
+  <div class="form-wrapper">
+    <form class="form" method="POST" action="/venues/{{venue.id}}/delete">
+      {{ form.hidden_tag() }}
+      <h3 class="form-heading">Delete Venue  <em>{{ venue.name }}</em> ? <a href="{{ url_for('index') }}" title="Back to homepage"><i class="fa fa-home pull-right"></i></a></h3>
+	  
+	  <div class="form-group">
+        <label for="venue_id">Venue ID</label>
+		<small>To confirm your delete, type in the Venue's ID below</small>
+        {{ form.venue_id(class_ = 'form-control', placeholder='Venue ID', autofocus = true) }}
+      </div>
+
+      <input type="submit" value="Delete Venue" class="btn btn-primary btn-lg btn-block">
+    </form>
+  </div>
+{% endblock %}
