@@ -6,14 +6,21 @@ import json, sys
 import dateutil.parser
 import babel
 from datetime import datetime
-from flask import Flask, render_template, request, flash, redirect, url_for
+from flask import (
+  Flask,
+  render_template, 
+  request, 
+  flash, 
+  redirect, 
+  url_for
+)
 from flask_moment import Moment
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 import logging
 from logging import Formatter, FileHandler
 from forms import *
-from sqlalchemy_utils import force_auto_coercion
+from models import db, Venue, Artist, Show
 
 #----------------------------------------------------------------------------#
 # App Config.
@@ -22,22 +29,40 @@ from sqlalchemy_utils import force_auto_coercion
 app = Flask(__name__)
 moment = Moment(app)
 app.config.from_object('config')
-db = SQLAlchemy(app)
+#Resolves issue of circular imports!
+db.init_app(app)  # Simply initiates the app here! https://flask-sqlalchemy.palletsprojects.com/en/2.x/api/
 migrate = Migrate(app, db)
+
+#How do I interact with the app through the terminal? Is it not possible?
+def create_app():
+    app = Flask(__name__)
+    app.config.from_object("config")
+
+    with app.app_context():
+        db.create_all()
+
+    return app
 
 #----------------------------------------------------------------------------#
 # Some Function Helpers.
 #----------------------------------------------------------------------------#
-force_auto_coercion()
+
 
 def flash_errors(form):
-  # """Flashes form errors"""   From StackOverflow
+  # # """Flashes form errors"""   From StackOverflow
   for field, errors in form.errors.items():
+    
     for error in errors:
-        flash(u"Error in the %s field - %s" % (
-          getattr(form, field).label.text,
-          error
-        ), 'error')
+      flash(u"Error in the %s field - %s" % (
+        getattr(form, field).label.text,
+        error
+      ), 'error')
+
+  """ # To Udacity reviewer! It didn't work! I didn't have the time to look through it for the problem."""
+  # message = []
+  # for field, err in form.errors.items():
+  #     message.append(field + ' ' + '|'.join(err))
+  # flash(u'Errors in validation ' + str(message))
 
 #----------------------------------------------------------------------------#
 # Filters.
@@ -57,12 +82,11 @@ app.jinja_env.filters['datetime'] = format_datetime
 # Controllers.
 #----------------------------------------------------------------------------#
 
-import models
 
 @app.route('/')
 def index():
-  all_artists=models.Artist.query.order_by(db.desc(models.Artist.created_at)).limit(10).all()
-  all_venues= models.Venue.query.order_by(db.desc(models.Venue.created_at)).limit(10).all()
+  all_artists=Artist.query.order_by(db.desc(Artist.created_at)).limit(10).all()
+  all_venues= Venue.query.order_by(db.desc(Venue.created_at)).limit(10).all()
   return render_template('pages/home.html', artists=all_artists, venues=all_venues)
 
 
@@ -83,18 +107,18 @@ def venues():
   #   venues = fields.List(fields.Nested(VenueSchema, many=True))
 
   def upcoming_shows(id, city, state):
-    num_of_shows = models.Venue.query\
-      .with_entities(models.Venue.id, models.Show.start_time)\
-      .join(models.Show, id == models.Show.venue_id)\
-      .join(models.Artist, models.Artist.id == models.Show.artist_id)\
-      .filter( (models.Show.start_time > datetime.now()) & 
-        (models.Venue.city==city) &
-        (models.Venue.state==state) )\
+    num_of_shows = Venue.query\
+      .with_entities(Venue.id, Show.start_time)\
+      .join(Show, id == Show.venue_id)\
+      .join(Artist, Artist.id == Show.artist_id)\
+      .filter( (Show.start_time > datetime.now()) & 
+        (Venue.city==city) &
+        (Venue.state==state) )\
       .count()
     return num_of_shows
 
-  dist_locale=models.Venue.query.with_entities((models.Venue.id), (models.Venue.city) , (models.Venue.state) )\
-    .distinct().order_by(models.Venue.city).order_by(models.Venue.state).all()
+  dist_locale=Venue.query.with_entities((Venue.id), (Venue.city) , (Venue.state) )\
+    .distinct().order_by(Venue.city).order_by(Venue.state).all()
 
   all_locations = []
   for result in dist_locale:
@@ -103,7 +127,7 @@ def venues():
     city = result.city
     state = result.state
 
-    all_venues=models.Venue.query.filter(models.Venue.city==city, models.Venue.state==state).all()
+    all_venues=Venue.query.filter(Venue.city==city, Venue.state==state).all()
 
     for a_venue in all_venues:
       if result.city==a_venue.city and result.state==a_venue.state: #My issue is getting another result set of all venues for me to compare their location against.
@@ -133,31 +157,23 @@ def venues():
 
 @app.route('/venues/search', methods=['POST'])
 def search_venues():
-  def upcoming_shows(id):
-    num_of_shows = models.Venue.query\
-      .with_entities(models.Venue.id, models.Show.start_time)\
-      .join(models.Show, id == models.Show.venue_id)\
-      .join(models.Artist, models.Artist.id == models.Show.artist_id)\
-      .filter( (models.Show.start_time > datetime.now()))\
-      .count()
-    return num_of_shows
 
-  search_term=request.form.get('search_term', '')
-
-  search = models.Venue.query.filter(models.Venue.name.ilike(r"%{}%".format(search_term))   |
-                        models.Venue.city.ilike(r"%{}%".format(search_term))    |
-                        models.Venue.state.ilike(r"%{}%".format(search_term))).order_by(models.Venue.id)
+  search_term = request.form.get('search_term', '')
+  search = Venue.query.filter(Venue.name.ilike(r"%{}%".format(search_term))   |
+                        Venue.city.ilike(r"%{}%".format(search_term))    |
+                        Venue.state.ilike(r"%{}%".format(search_term))).order_by(Venue.id)
   search_results = search.all()
   count_of_results = search.count()
 
   data_list = []
-  for find in search_results:
-    id = find.id
-    name = find.name
+  for match in search_results:
+    id = match.id
+    name = match.name
+    shows = list(filter(lambda show: show.start_time > datetime.now(), match.shows))
     data = {
       'id': id,
       'name': name,
-      'num_upcoming_shows': upcoming_shows(id)
+      'num_upcoming_shows': len(shows)
     }
     data_list.append(data)
 
@@ -170,61 +186,47 @@ def search_venues():
 
 @app.route('/venues/<int:venue_id>')
 def show_venue(venue_id):
-  id = venue_id
-  venue = models.Venue.query.get(id)
-  venue_dict_data = venue._asdict()
+  """Dear Udacity Reviewer, I didn't understand the instruction in this section for a long time and struggled, 
+  but I believe I eventually got it.
+  I have implemented the JOIN using the 'back_populates' property in my models.py file. A video from PrettyPrinted proved helpful.
+  The code is much cleaner with the if sorting each show to past or upcoming. Thank you. 
+  
+  But:
+  1 I didn't get to see the interpreted SQL statements. Perhaps, I didn't integrate the SQLALCHEMY_ECHO statement appropriately?
+  2 How can I use the association_proxy safely, to have for example, artist.venues.append(venue) 
+  
+  P.S.: Excuse me, but I cannot access any of the knowledge questions and answers. 
+  It seems my scholarship doesn't cover that service.
+  """
+  venue = Venue.query.get_or_404(venue_id)
+  # venue_dict_data = venue._asdict()
 
-  shows_list = list(
-    models.Show.query.with_entities(models.Show.artist_id, models.Artist.name.label('artist_name'), models.Artist.image_link.label('image_link'), models.Show.start_time)\
-      .filter(models.Show.artist_id == models.Artist.id, models.Show.venue_id == id)
-      .all()
-  )
-# shows_list = list(
-#     models.Venue.query.with_entities(models.Venue.id, models.Artist.id, models.Artist.name, models.Artist.image_link,models.Show.start_time)\
-#       .join(models.Show, venue.id == models.Show.venue_id)
-#       .join(models.Artist, models.Artist.id == models.Show.artist_id).all()
-#   ) ERROR: sqlalchemy.exc.InvalidRequestError: Can't determine which FROM clause to join from, there are multiple FROMS which can join to this entity. Please use the .select_from() method to establish an explicit left side, as well as providing an explicit ON clause if not present already to help resolve the ambiguity.
-# sqlalchemy.exc.ProgrammingError: (psycopg2.errors.DuplicateAlias) table name "artists" specified more than once
-# GIVES ISSUES, BUT I DON'T KNOW WHY! What are the BEST PRACTICES IN FLASK-SQLALCHEMY?
-
-  get_past_shows = list(filter(lambda show: show.start_time < datetime.now(), shows_list))
-  past_shows_count = len(get_past_shows)
   past_shows = []
-  for a_show in get_past_shows:
-    show_dict = {
-      "artist_id": a_show.artist_id,
-      "artist_name": a_show.artist_name,
-      "artist_image_link": a_show.image_link,
-      "start_time": a_show.start_time.strftime('%m-%d-%Y %H:%M:%S')
-    }
-    past_shows.append(show_dict)
-  
-
-  get_upcoming_shows = list(filter(lambda show: show.start_time > datetime.now(), shows_list))
-  upcoming_shows_count = len(get_upcoming_shows)
   upcoming_shows = []
-  for a_show in get_upcoming_shows:
-    show_dict = {
-      "artist_id": a_show.artist_id,
-      "artist_name": a_show.artist_name,
-      "artist_image_link": a_show.image_link,
-      "start_time": a_show.start_time.strftime('%m-%d-%Y %H:%M:%S')
+
+  for show in venue.shows:
+    a_show = {
+        'artist_id': show.artist_id,
+        'artist_name': show.artist.name,
+        'artist_image_link': show.artist.image_link,
+        'start_time': show.start_time.strftime("%m-%d-%Y, %H:%M")
     }
-    upcoming_shows.append(show_dict)
-  
+    if show.start_time <= datetime.now():
+        past_shows.append(a_show)
+    else:
+        upcoming_shows.append(a_show)
 
+    # object class to dict
+  data = vars(venue) 
 
-  iterated_new_key_values=(
-    ('past_shows', past_shows),
-    ('upcoming_shows', upcoming_shows),
-    ('past_shows_count', past_shows_count),
-    ('upcoming_shows_count', upcoming_shows_count)
-  )
-  venue_dict_data.update(iterated_new_key_values)
+  data['past_shows'] = past_shows
+  data['upcoming_shows'] = upcoming_shows
+  data['past_shows_count'] = len(past_shows)
+  data['upcoming_shows_count'] = len(upcoming_shows)
 
-  return render_template('pages/show_venue.html', venue=venue_dict_data)
+  return render_template('pages/show_venue.html', venue=data)
 
-#  Create models.Venue
+#  Create Venue
 #  ----------------------------------------------------------------
 
 @app.route('/venues/create', methods=['GET'])
@@ -234,27 +236,20 @@ def create_venue_form():
 
 @app.route('/venues/create', methods=['POST'])
 def create_venue_submission():
-  form = VenueForm()
-    
-  if form.validate_venuephone(form.phone.data) != True or \
-     form.check_for_venuename(form.name.data)==True or \
-      form.validate_on_submit()==False:
-    
-    flash(f'An error occurred with the validation. Check your inputs!','error')
-    flash_errors(form)
+  #To set the FlaskForm, use:  the FlaskForm form = VenueForm(request.form, meta={'csrf': False})
+  form = VenueForm(request.form, meta={'csrf':False})
+  name = form.name.data
 
-    return render_template('forms/new_venue.html', form=form)
-
-  else: #If there are no errors from the validations
-
+  # Validate all fields and check for unique venue name  and form.check_for_venuename(form.name.data)==True:
+  if form.validate() and form.check_for_venuename(name)==True:
     try:
-      venue=models.Venue(
-        name = form.name.data,
+      venue=Venue(
+        name = name,
         city = form.city.data,
         state = form.state.data,
         address = form.address.data,
         phone = form.phone.data,
-        genres = request.form.getlist('genres'),
+        genres = form.genres.data,
         facebook_link = form.facebook_link.data,
         image_link = form.image_link.data,
         website_link = form.website_link.data,
@@ -270,25 +265,31 @@ def create_venue_submission():
       flash(f'An error occurred. Venue ' + form.name.data + ' could not be listed.', 'error')
     finally:
       db.session.close()
-    artists=models.Artist.query.order_by(db.desc(models.Artist.created_at)).limit(10).all()
-    venues= models.Venue.query.order_by(db.desc(models.Venue.created_at)).limit(10).all()
-    return render_template('pages/home.html', artists=artists, venues=venues)
+    artists=Artist.query.order_by(db.desc(Artist.created_at)).limit(10).all()
+    venues= Venue.query.order_by(db.desc(Venue.created_at)).limit(10).all()
+    #return render_template('pages/home.html') 
+
+  # If there is any invalid field
+  else:
+    flash(f'There are errors with the validation.')
+    flash_errors(form) #http://wtforms.simplecodes.com/docs/0.6.2/forms.html#wtforms.form.Form.errors
+    form=VenueForm()
+    return render_template('forms/new_venue.html', form=form)
   # see: https://flask.palletsprojects.com/en/2.2.x/patterns/flashing/
-  # return render_template('pages/home.html')
+  return render_template('pages/home.html', artists=artists, venues=venues)
 
 @app.route('/venues/<venue_id>/delete', methods=['GET'])
 def delete_venue_form(venue_id):
   # Anything I might want to add goes HERE
   form = DeleteForm()
-  venue_to_delete = models.Venue.query.get_or_404(venue_id, description="There is no venue with ID {}".format(venue_id))
+  venue_to_delete = db.session.query(Venue).get_or_404(venue_id, description="There is no venue with ID {}".format(venue_id))
   return render_template('forms/delete_venue.html', form=form, venue=venue_to_delete)
 
-@app.route('/venues/<venue_id>/delete', methods=['POST','DELETE'])
+@app.route('/venues/<venue_id>/delete', methods=['POST'])
 def delete_venue(venue_id):
-  form = DeleteForm()
-  if request.method == 'POST' and form.venue_id.data == venue_id: #
+  if request.method == 'POST':
     try:
-      venue_to_delete = models.Venue.query.get_or_404(venue_id, description="There is no venue with ID {}".format(venue_id))
+      venue_to_delete = db.session.query(Venue).get_or_404(venue_id, description="There is no venue with ID {}".format(venue_id))
       db.session.delete(venue_to_delete)
       db.session.commit()
       flash(f'The venue was successfully deleted!', 'success')
@@ -299,15 +300,15 @@ def delete_venue(venue_id):
     finally:
       db.session.close()
   else:
-    flash(f'Venue ID does not exist')
+    flash(f'Error!')
   return redirect(url_for('index', artists=artists, venues=venues))
 
 #  Artists
 #  ----------------------------------------------------------------
 @app.route('/artists')
 def artists():
-  all_artists = models.Artist.query.with_entities(models.Artist.id, models.Artist.name).all()
-  
+
+  all_artists = Artist.query.with_entities(Artist.id, Artist.name).all()
   all_artists_list = []
   for an_artist in all_artists:
     artist_dict = {
@@ -320,31 +321,23 @@ def artists():
 
 @app.route('/artists/search', methods=['POST'])
 def search_artists():
-  def upcoming_shows(id):
-    num_of_shows = models.Artist.query\
-      .with_entities(models.Artist.id, models.Show.start_time)\
-      .join(models.Show, id == models.Show.artist_id)\
-      .join(models.Venue, models.Venue.id == models.Show.venue_id)\
-      .filter( (models.Show.start_time > datetime.now())) \
-      .count()
-    return num_of_shows
-
+  
   search_term=request.form.get('search_term', '')
-
-  search = models.Artist.query.filter(models.Artist.name.ilike(r"%{}%".format(search_term))     | 
-                models.Artist.city.ilike(r"%{}%".format(search_term))  |  
-                models.Artist.state.ilike(r"%{}%".format(search_term))).order_by(models.Artist.id)
+  search = Artist.query.filter(Artist.name.ilike(r"%{}%".format(search_term))     | 
+                Artist.city.ilike(r"%{}%".format(search_term))  |  
+                Artist.state.ilike(r"%{}%".format(search_term))).order_by(Artist.id)
   search_results = search.all()
   count_of_results = search.count()
 
   data_list = []
-  for find in search_results:
-    id = find.id
-    name = find.name
+  for match in search_results:
+    shows = list(filter(lambda show: show.start_time > datetime.now(), match.shows))
+    id = match.id
+    name = match.name
     data = {
       'id': id,
       'name': name,
-      'num_upcoming_shows': upcoming_shows(id)
+      'num_upcoming_shows': shows
     }
     data_list.append(data)
 
@@ -356,62 +349,40 @@ def search_artists():
 
 @app.route('/artists/<int:artist_id>')
 def show_artist(artist_id):
-  id = artist_id
-  artist = models.Artist.query.get(id)
-  artist_dict_data = artist._asdict()
+  artist = Artist.query.get_or_404(artist_id)
+  # artist_dict_data = artist._asdict()
 
-  shows_list = list(
-    models.Show.query.with_entities(models.Show.venue_id, models.Show.artist_id, models.Venue.name.label('venue_name'), models.Venue.image_link.label('image_link'), models.Show.start_time)\
-      .join(models.Venue, models.Venue.id == models.Show.venue_id )
-      .filter(models.Show.artist_id == id, models.Show.venue_id == models.Venue.id)
-      .all()
-  )
-
-
-  get_past_shows = list(filter(lambda show: show.start_time < datetime.now(), shows_list))
-  past_shows_count = len(get_past_shows)
   past_shows = []
-  for a_show in get_past_shows:
-    show_dict = {
-      "venue_id": a_show.venue_id,
-      "venue_name": a_show.venue_name,
-      "venue_image_link": a_show.image_link,
-      "start_time": a_show.start_time.strftime('%m-%d-%Y %H:%M:%S')
-    }
-    past_shows.append(show_dict)
-  
-
-  get_upcoming_shows = list(filter(lambda show: show.start_time > datetime.now(), shows_list))
-  upcoming_shows_count = len(get_upcoming_shows)
   upcoming_shows = []
-  for a_show in get_upcoming_shows:
-    show_dict = {
-      "venue_id": a_show.venue_id,
-      "venue_name": a_show.venue_name,
-      "venue_image_link": a_show.image_link,
-      "start_time": a_show.start_time.strftime('%m-%d-%Y %H:%M:%S')
+
+  for show in artist.shows:
+    a_show = {
+        'venue_id': show.venue_id,
+        'venue_name': show.venue.name,
+        'venue_image_link': show.venue.image_link,
+        'start_time': show.start_time.strftime("%m-%d-%Y, %H:%M")
     }
-    upcoming_shows.append(show_dict)
-  
+    if show.start_time <= datetime.now():
+        past_shows.append(a_show)
+    else:
+        upcoming_shows.append(a_show)
 
+    # object class to dict
+  data = vars(artist) 
 
-  iterated_new_key_values=(
-    ('past_shows', past_shows),
-    ('upcoming_shows', upcoming_shows),
-    ('past_shows_count', past_shows_count),
-    ('upcoming_shows_count', upcoming_shows_count)
-  )
-  artist_dict_data.update(iterated_new_key_values)
+  data['past_shows'] = past_shows
+  data['upcoming_shows'] = upcoming_shows
+  data['past_shows_count'] = len(past_shows)
+  data['upcoming_shows_count'] = len(upcoming_shows)
 
-  return render_template('pages/show_artist.html', artist=artist_dict_data)
+  return render_template('pages/show_artist.html', artist=data)
 
 #  Update
 #  ----------------------------------------------------------------
 @app.route('/artists/<int:artist_id>/edit', methods=['GET'])
 def edit_artist(artist_id):
-  get_artist = models.Artist.query.get_or_404(artist_id, description='There is no artist data with the ID {}'.format(artist_id))
+  get_artist = Artist.query.get_or_404(artist_id, description='There is no artist data with the ID {}'.format(artist_id))
   artist_dict = get_artist._asdict()
-
   form = ArtistForm(obj=get_artist) # Or we can have form = ArtistForm(data=artist_dict)
   #  https://wtforms.readthedocs.io/en/2.3.x/forms/#:~:text=obj%20%E2%80%93%20If%20formdata,are%20not%20present.
   
@@ -419,70 +390,183 @@ def edit_artist(artist_id):
 
 @app.route('/artists/<int:artist_id>/edit', methods=['POST'])
 def edit_artist_submission(artist_id):
-  id=artist_id
-  artist=models.Artist.query.get(id)
-  form = ArtistForm()
+  """"
+  This implementation to protect against rejected inputs is not the best or the cleanest, I think.
+  But, I don't think putting the validation code in a function to call will be possible. I'm not so sure. 
+  I tried to do that but I was afraid that my lines of codew would fall apart.
+  Moreover, I want to maintain this check for uniqueness of the artists or venues to an extent.
+  """
+  artist=db.session.query(Artist).get_or_404(artist_id)
+  form = ArtistForm(request.form, meta={'csrf': False})
   if request.method == 'POST': # Adding this check for a POST method proved to be the only 
-    #way to ensure that the application would accept the updated value instead of the old one.
-    if form.validate_on_submit()==False or form.validate_artistphone(form.phone.data) == False:
+  #way to ensure that the application would accept the updated value instead of the old one.
+    if form.name.data == artist.name:
+      if form.validate():
+        try:
+          #Note: Putting commas after values, e.g. 
+          # artist.name = form.name.data,
+          # artist.city = form.city.data, may corrupt the form.attr.data value being sent. It can give ('Angela Yu',) instead of Angela Yu as the name or ('False',) instead of False, causing errors.
+          '''If I try to include artist.name = form.name.data, I get an error because of the name check!
+          Of course, I only found out about these issue because of input entries that were validated properly during testing.
+          With the way the application is set up now, I doubt that could happen. 
+          OH, IT STILL HAPPENS! IF I WANT TO PROPERLY GUARD AGAINST DUPLICATE NAMES, IT WILL COME UP
+          Is it possible to change a record already inputted in the database, e.g. an Artist's name and 
+          still have it maintain the duplicate name check for other inputs.
+          '''
+          artist.name = form.name.data 
+          #print(artist.name)
+          artist.city = form.city.data
+          artist.state = form.state.data
+          artist.phone = form.phone.data
+          artist.genres = form.genres.data
+          artist.facebook_link = form.facebook_link.data
+          artist.image_link = form.image_link.data
+          artist.website_link = form.website_link.data
+          artist.seeking_venues = form.seeking_venues.data
+          artist.seeking_description = form.seeking_description.data
     
-      flash(f'An error occurred with the validation. Check your inputs!','error')
-      flash_errors(form)
-      #Found this as the way to keep the form data from the user's first edit, in case there was some other error with what he had inputted!
-      #Had some help about this from here: https://stackoverflow.com/questions/56904775/how-to-redirect-while-keeping-form-data-using-flask-and-wtforms#:~:text=7,for%20redirect.
-      #https://wtforms.readthedocs.io/en/3.0.x/forms/?highlight=forms#:~:text=If%20there%20is%20no%20POST%20data%2C%20or%20the%20data%20fails%20to%20validate%2C%20then%20the%20view%20%E2%80%9Cfalls%20through%E2%80%9D%20to%20the%20rendering%20portion.%20The%20Form%20object%20can%20be%20passed%20into%20the%20template%20and%20its%20attributes%20can%20be%20used%20to%20render%20the%20fields%20and%20also%20for%20displaying%20errors%3A
-      return render_template('forms/edit_artist.html', form=form, artist=artist) 
-    else: #If there are no errors from the validations
-
-      try:
-        artist.genres = request.form.getlist('genres')
-        form.populate_obj(artist)
-        db.session.commit()
+          db.session.commit()
+          flash(f'Artist ' + artist.name + ' was successfully edited!', 'success')
+          print(artist.name)
+        except Exception:
+          print(sys.exc_info())
+          db.session.rollback()
+          flash(f'An error occurred. Artist ' + artist.name + ' was not updated.', 'error')
+        finally:
+          db.session.close()
+        #return redirect(url_for('show_artist', artist=artist, artist_id=id)) # redirect method gives me the HTTP 302 issue. But I need the method to do the logic in show_artist
+        #Note also that using return redirect(url_for('show_artist', artist=artist, artist_id=id)) will give an error from the implementation I made in show_venue.html to resolve the genres display format.
+        return render_template('pages/show_artist.html', artist=artist, artist_id=id)  # However, this does not format the genres correctly for display. So, I made an implementation in show_venue.html after a fashion. Line 13!
         
-        flash(f'Artist ' + artist.name + ' was successfully edited!', 'success')
-      except Exception:
-        print(sys.exc_info())
-        db.session.rollback()
-        flash(f'An error occurred. Artist ' + artist.name + ' was not updated.', 'error')
-      finally:
-        db.session.close()
-      return redirect(url_for('show_artist', artist_id=id))
+      else: #If there are no errors from the validations
+
+        flash(f'An error occurred with the validation. Check your inputs!','error')
+        flash_errors(form)
+        form = ArtistForm()
+        #Found this as the way to keep the form data from the user's first edit, in case there was some other error with what he had inputted!
+        #Had some help about this from here: https://stackoverflow.com/questions/56904775/how-to-redirect-while-keeping-form-data-using-flask-and-wtforms#:~:text=7,for%20redirect.
+        #https://wtforms.readthedocs.io/en/3.0.x/forms/?highlight=forms#:~:text=If%20there%20is%20no%20POST%20data%2C%20or%20the%20data%20fails%20to%20validate%2C%20then%20the%20view%20%E2%80%9Cfalls%20through%E2%80%9D%20to%20the%20rendering%20portion.%20The%20Form%20object%20can%20be%20passed%20into%20the%20template%20and%20its%20attributes%20can%20be%20used%20to%20render%20the%20fields%20and%20also%20for%20displaying%20errors%3A
+        return render_template('forms/edit_artist.html', form=form, artist=artist)
+    else:
+      if form.validate() and form.check_for_artistname(form.name.data):
+        try:
+          #Note: Putting commas after values, e.g. 
+          # artist.name = form.name.data,
+          # artist.city = form.city.data, may corrupt the form.attr.data value being sent. It can give ('Angela Yu',) instead of Angela Yu as the name or ('False',) instead of False, causing errors.
+          artist.name = form.name.data 
+          #print(artist.name)
+          artist.city = form.city.data
+          artist.state = form.state.data
+          artist.phone = form.phone.data
+          artist.genres = form.genres.data
+          artist.facebook_link = form.facebook_link.data
+          artist.image_link = form.image_link.data
+          artist.website_link = form.website_link.data
+          artist.seeking_venues = form.seeking_venues.data
+          artist.seeking_description = form.seeking_description.data
+    
+          db.session.commit()
+          flash(f'Artist ' + artist.name + ' was successfully edited!', 'success')
+          print(artist.name)
+        except Exception:
+          print(sys.exc_info())
+          db.session.rollback()
+          flash(f'An error occurred. Artist ' + artist.name + ' was not updated.', 'error')
+        finally:
+          db.session.close()
+        #return redirect(url_for('show_artist', artist=artist, artist_id=id)) # redirect method gives me the HTTP 302 issue. But I need the method to do the logic in show_artist
+        #Note also that using return redirect(url_for('show_artist', artist=artist, artist_id=id)) will give an error from the implementation I made in show_venue.html to resolve the genres display format.
+        return render_template('pages/show_artist.html', artist=artist, artist_id=id)  # However, this does not format the genres correctly for display. So, I made an implementation in show_venue.html after a fashion. Line 13!
+        
+      else: #If there are no errors from the validations
+
+        flash(f'An error occurred with the validation. Check your inputs!','error')
+        flash_errors(form)
+        form = ArtistForm()
+        #Found this as the way to keep the form data from the user's first edit, in case there was some other error with what he had inputted!
+        #Had some help about this from here: https://stackoverflow.com/questions/56904775/how-to-redirect-while-keeping-form-data-using-flask-and-wtforms#:~:text=7,for%20redirect.
+        #https://wtforms.readthedocs.io/en/3.0.x/forms/?highlight=forms#:~:text=If%20there%20is%20no%20POST%20data%2C%20or%20the%20data%20fails%20to%20validate%2C%20then%20the%20view%20%E2%80%9Cfalls%20through%E2%80%9D%20to%20the%20rendering%20portion.%20The%20Form%20object%20can%20be%20passed%20into%20the%20template%20and%20its%20attributes%20can%20be%20used%20to%20render%20the%20fields%20and%20also%20for%20displaying%20errors%3A
+        return render_template('forms/edit_artist.html', form=form, artist=artist) 
+
 
 @app.route('/venues/<int:venue_id>/edit', methods=['GET'])
 def edit_venue(venue_id):
-  get_venue = models.Venue.query.get_or_404(venue_id)
-  form = VenueForm(obj=get_venue)
+  get_venue = Venue.query.get_or_404(venue_id)
+  form = VenueForm(obj=get_venue) #Does not automatically effect the genres form selection
 
   return render_template('forms/edit_venue.html', form=form, venue=get_venue)
 
 @app.route('/venues/<int:venue_id>/edit', methods=['POST'])
 def edit_venue_submission(venue_id):
-  venue=models.Venue.query.get(venue_id)
-  form = VenueForm(obj=venue)
+
+  venue=db.session.query(Venue).get(venue_id) #Note: venue=Venue.query.get(venue_id) does not EFFECT  UPDATES TO THE DATABASE!
+  #More Info here! == https://stackoverflow.com/questions/29194926/python-flask-db-session-commit-is-not-working 
+  form = VenueForm(request.form, meta={'csrf': False})
   if request.method == 'POST': 
-    if form.validate_on_submit()==False or form.validate_venuephone(form.phone.data) == False:
-    
-      flash(f'An error occurred with the validation. Check your inputs!','error')
-      flash_errors(form)
-      
-      return render_template('forms/edit_venue.html', form=form, venue=venue) 
-    else: #If there are no errors from the validations
+    if form.name.data == venue.name:
+      if form.validate():
+        try:
+          venue.name = form.name.data
+          venue.city = form.city.data
+          venue.state = form.state.data
+          venue.phone = form.phone.data
+          venue.genres = form.genres.data
+          venue.facebook_link = form.facebook_link.data
+          venue.image_link = form.image_link.data
+          venue.website_link = form.website_link.data
+          venue.seeking_talent = form.seeking_talent.data
+          venue.seeking_description = form.seeking_description.data
 
-      try:
-        venue.genres = request.form.getlist('genres')
-        form.populate_obj(venue)
-        db.session.commit()
-        flash(f'Venue ' + venue.name + ' was successfully edited!', 'success')
-      except Exception:
-        print(sys.exc_info())
-        db.session.rollback()
-        flash(f'An error occurred. Venue ' + request.form['name'] + ' was not updated.', 'error')
-      finally:
-        db.session.close()
-      return redirect(url_for('show_venue', venue_id=venue_id))
-  
+          db.session.commit()
 
-#  Create models.Artist
+          flash(f'Venue ' + venue.name + ' was successfully edited!', 'success')
+        except Exception:
+          print(sys.exc_info())
+          db.session.rollback()
+          flash(f'An error occurred. Venue ' + request.form['name'] + ' was not updated.', 'error')
+        finally:
+          db.session.close()
+        return render_template('pages/show_venue.html', venue=venue) #Note using form.poulate_obj(venue) with this new implementation also doesn't work
+        #This method also has the issue if not giving the other added data from the show_venue or show_artist endpoint
+      else: #If there are errors 
+
+        flash(f'An error occurred with the validation. Check your inputs!','error')
+        flash_errors(form)
+        form=VenueForm()
+        return render_template('forms/edit_venue.html', form=form, venue=venue) 
+    else:
+      if form.validate() and form.check_for_venuename(form.name.data):
+        try:
+          venue.name = form.name.data
+          venue.city = form.city.data
+          venue.state = form.state.data
+          venue.phone = form.phone.data
+          venue.genres = form.genres.data
+          venue.facebook_link = form.facebook_link.data
+          venue.image_link = form.image_link.data
+          venue.website_link = form.website_link.data
+          venue.seeking_talent = form.seeking_talent.data
+          venue.seeking_description = form.seeking_description.data
+
+          db.session.commit()
+
+          flash(f'Venue ' + venue.name + ' was successfully edited!', 'success')
+        except Exception:
+          print(sys.exc_info())
+          db.session.rollback()
+          flash(f'An error occurred. Venue ' + request.form['name'] + ' was not updated.', 'error')
+        finally:
+          db.session.close()
+        return render_template('pages/show_venue.html', venue=venue) #Note using form.poulate_obj(venue) with this new implementation also doesn't work
+        #This method also has the issue if not giving the other added data from the show_venue or show_artist endpoint
+      else: #If there are errors 
+
+        flash(f'An error occurred with the validation. Check your inputs!','error')
+        flash_errors(form)
+        form=VenueForm()
+        return render_template('forms/edit_venue.html', form=form, venue=venue) 
+        
+#  Create Artist
 #  ----------------------------------------------------------------
 
 @app.route('/artists/create', methods=['GET'])
@@ -492,25 +576,20 @@ def create_artist_form():
 
 @app.route('/artists/create', methods=['POST'])
 def create_artist_submission():
-  form = ArtistForm()
+  form = ArtistForm(request.form, meta={'csrf': False})
 
-  if form.validate_artistphone(form.phone.data)==False or \
-  form.check_for_artistname(form.name.data)==True or \
-    form.validate_on_submit()==False:
+  print(form.genres.data)
+  print(request.form.getlist('genres'))
+  #Validates the form
+  if form.validate() and form.check_for_artistname(form.name.data):
   
-    flash(f'An error occurred with the validation. Check your inputs!','error')
-    flash_errors(form)
-    return render_template('forms/new_artist.html', form=form)
-
-  else: #If there are no errors from the validations
-
     try:
-      artist=models.Artist(
+      artist=Artist(
         name = form.name.data,
         city = form.city.data,
         state = form.state.data,
         phone = form.phone.data,
-        genres = request.form.getlist('genres'),
+        genres = form.genres.data,
         facebook_link = form.facebook_link.data,
         image_link = form.image_link.data,
         website_link = form.website_link.data,
@@ -526,32 +605,42 @@ def create_artist_submission():
       flash(f'An error occurred. Artist ' + request.form['name'] + ' could not be listed.', 'error')
     finally:
       db.session.close()
-    artists=models.Artist.query.order_by(db.desc(models.Artist.created_at)).limit(10).all()
-    venues= models.Venue.query.order_by(db.desc(models.Venue.created_at)).limit(10).all()
-    return render_template('pages/home.html', artists=artists, venues=venues)
+    artists=Artist.query.order_by(db.desc(Artist.created_at)).limit(10).all()
+    venues= Venue.query.order_by(db.desc(Venue.created_at)).limit(10).all()
 
-#  Delete models.Artist
+  else: # If there is any invalid field
+    
+    flash(f'An error occurred with the validation. Check your inputs!','error')
+    flash_errors(form)
+    form=ArtistForm()
+    return render_template('forms/new_artist.html', form=form)
+  return render_template('pages/home.html', artists=artists, venues=venues)
+
+#  Delete Artist
 #  ----------------------------------------------------------------
 @app.route('/artists/<artist_id>/delete', methods=['GET'])
 def delete_artist_form(artist_id):
   # Anything I might want to add goes HERE
   form = DeleteForm()
-  artist_to_delete = models.Artist.query.get_or_404(artist_id, description="There is no venue with ID {}".format(artist_id))
+  artist_to_delete = Artist.query.get_or_404(artist_id, description="There is no venue with ID {}".format(artist_id))
   return render_template('forms/delete_artist.html', form=form, artist=artist_to_delete)
 
-@app.route('/artists/<artist_id>/delete', methods=['POST','DELETE'])
+@app.route('/artists/<artist_id>/delete', methods=['POST'])
 def delete_artist(artist_id):
-  try:
-    artist_to_delete = models.Artist.query.get_or_404(artist_id, description="There is no venue with ID {}".format(artist_id))
-    db.session.delete(artist_to_delete)
-    db.session.commit()
-    flash(f'The artist was successfully deleted!')
-  except Exception:
-    print(sys.exc_info())
-    db.session.rollback()
-    flash(f'Artist could not be deleted')
-  finally:
-    db.session.close()
+  if request.method == 'POST':
+    try:
+      artist_to_delete = db.session.query(Artist).get_or_404(artist_id, description="There is no venue with ID {}".format(artist_id))
+      db.session.delete(artist_to_delete)
+      db.session.commit()
+      flash(f'The artist was successfully deleted!')
+    except Exception:
+      print(sys.exc_info())
+      db.session.rollback()
+      flash(f'Artist could not be deleted')
+    finally:
+      db.session.close()
+  else:
+    flash(f'Error!')
   return redirect(url_for('index', artists=artists, venues=venues))
 
 #  Shows
@@ -560,23 +649,19 @@ def delete_artist(artist_id):
 @app.route('/shows')
 def shows():
   
-  results = models.Show.query\
-    .with_entities(models.Show.venue_id, models.Venue.name.label('venue_name'), models.Show.artist_id, \
-      models.Artist.name.label('artist_name'), models.Artist.image_link, models.Show.start_time)\
-    .join(models.Artist, models.Show.artist_id == models.Artist.id)\
-    .join(models.Venue, models.Show.venue_id == models.Venue.id).all()
-
+  shows = Show.query.all()
   show_list = []
-  for show in results:
+  for show in shows:
     show_dic = {
       "venue_id" : show.venue_id,
-      "venue_name" : show.venue_name,
+      "venue_name" : show.venue.name,
       "artist_id": show.artist_id,
-      "artist_name": show.artist_name,
-      "artist_image_link": show.image_link,
+      "artist_name": show.artist.name,
+      "artist_image_link": show.artist.image_link,
       "start_time": show.start_time.strftime('%m-%d-%Y %H:%M:%S')
     }
     show_list.append(show_dic)
+  
   return render_template('pages/shows.html', shows=show_list)
 
 @app.route('/shows/create')
@@ -587,17 +672,33 @@ def create_shows():
 
 @app.route('/shows/create', methods=['POST'])
 def create_show_submission():
-  form = ShowForm()
 
-  if  form.validate_on_submit() == True and \
-    form.check_validshow(form.artist_id.data, form.venue_id.data) == True:
+  form = ShowForm(request.form, meta={'csrf':False})
+  artist=db.session.query(Artist).get(form.artist_id.data)
+  venue=Venue.query.get(form.venue_id.data)
+
+  if  form.validate() and form.check_validshow(form.artist_id.data, form.venue_id.data) == True:
     try:
-
-      show = models.Show(
-        artist_id =  form.artist_id.data,
-        venue_id =  form.venue_id.data,
-        start_time = form.start_time.data
+      show = Show(
+        start_time = form.start_time.data, 
+        artist=artist, 
+        venue=venue
       )
+      # How can I use the association_proxy safely, to have for example, artist.venues.append(venue) 
+      print('The shows of the artist '+ artist.name)
+      for assoc in artist.shows:
+        print("Start time: ")
+        print(assoc.start_time)
+        print("The venue: ")
+        print( assoc.venue.name)
+      
+      print('The shows at the venue '+ venue.name)
+      for assoc in venue.shows:
+        print("Start time: ")
+        print(assoc.start_time)
+        print("The artist: ")
+        print( assoc.artist.name)
+
       db.session.add(show)
       db.session.commit()
       flash(f'Show was successfully listed!', 'success')
@@ -609,10 +710,11 @@ def create_show_submission():
     finally:
       db.session.close()
 
-    return render_template('pages/home.html')
+    return redirect(url_for('index', artists=artists, venues=venues))
   else:
     flash(f'An error occurred with the validation. Check your inputs!','error')
     flash_errors(form)
+    form=ShowForm()
     return render_template('forms/new_show.html', form=form)
   
 

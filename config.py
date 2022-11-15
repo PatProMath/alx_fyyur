@@ -8,6 +8,9 @@ DEBUG = True
 
 # Connect to the database
 
-
 # TODO IMPLEMENT DATABASE URL
 SQLALCHEMY_DATABASE_URI = 'postgresql://patty:pos02@localhost:5432/fyyur_db'
+#Removes the significant overhead
+SQLALCHEMY_TRACK_MODIFICATIONS = False
+#Allows me see the SQL queries being printed on the terminal
+SQLALCHEMY_ECH0=True
