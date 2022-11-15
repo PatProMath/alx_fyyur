@@ -577,9 +577,6 @@ def create_artist_form():
 @app.route('/artists/create', methods=['POST'])
 def create_artist_submission():
   form = ArtistForm(request.form, meta={'csrf': False})
-
-  print(form.genres.data)
-  print(request.form.getlist('genres'))
   #Validates the form
   if form.validate() and form.check_for_artistname(form.name.data):
   
@@ -620,7 +617,6 @@ def create_artist_submission():
 #  ----------------------------------------------------------------
 @app.route('/artists/<artist_id>/delete', methods=['GET'])
 def delete_artist_form(artist_id):
-  # Anything I might want to add goes HERE
   form = DeleteForm()
   artist_to_delete = Artist.query.get_or_404(artist_id, description="There is no venue with ID {}".format(artist_id))
   return render_template('forms/delete_artist.html', form=form, artist=artist_to_delete)
@@ -674,10 +670,11 @@ def create_shows():
 def create_show_submission():
 
   form = ShowForm(request.form, meta={'csrf':False})
+  # Get the artist and venue who have the show
   artist=db.session.query(Artist).get(form.artist_id.data)
-  venue=Venue.query.get(form.venue_id.data)
+  venue=db.session.query(Venue).get(form.venue_id.data)
 
-  if  form.validate() and form.check_validshow(form.artist_id.data, form.venue_id.data) == True:
+  if  form.validate() and form.check_validshow(form.artist_id.data, form.venue_id.data):
     try:
       show = Show(
         start_time = form.start_time.data, 
