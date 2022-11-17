@@ -19,3 +19,4 @@ flask-marshmallow
 sqlalchemy_utils
 SQLAlchemy==1.4.39
 Werkzeug==2.0.3
+python-dotenv

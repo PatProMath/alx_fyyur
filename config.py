@@ -7,10 +7,19 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 DEBUG = True
 
 # Connect to the database
+#Get the value of the environment variables
+user = 'DB_USR'
+password = 'DB_PASSWD'
+host = 'DB_HOST'
+database_uri = 'DB_URL'
 
-# TODO IMPLEMENT DATABASE URL
-SQLALCHEMY_DATABASE_URI = 'postgresql://patty:pos02@localhost:5432/fyyur_db'
-#Removes the significant overhead
+DATABASE_URI = os.getenv(database_uri)
+print(DATABASE_URI)
+# IMPLEMENT DATABASE URI
+SQLALCHEMY_DATABASE_URI = os.getenv(database_uri, 'postgresql://postgres@localhost:5432/postgres')
+
+#Removes the significant overhead in starting the application
 SQLALCHEMY_TRACK_MODIFICATIONS = False
 #Allows me see the SQL queries being printed on the terminal
-SQLALCHEMY_ECH0=True
+SQLALCHEMY_ECH0 = True
+#Ensure it is created in development folder

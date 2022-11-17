@@ -58,7 +58,7 @@ def flash_errors(form):
         error
       ), 'error')
 
-  """ # To Udacity reviewer! It didn't work! I didn't have the time to look through it for the problem."""
+""" #Dear Udacity reviewer, It didn't work! I didn't have the time to look through it for the problem."""
   # message = []
   # for field, err in form.errors.items():
   #     message.append(field + ' ' + '|'.join(err))
@@ -95,35 +95,13 @@ def index():
 
 @app.route('/venues')
 def venues():
-  # I will implement Marshmallow extension in another version, if I have the interest.
-  # class VenueSchema(Schema):
-  #   id = fields.Integer()
-  #   name = fields.String()
-  #   num_upcoming_shows = fields.Integer()
 
-  # class LocationSchema(Schema):
-  #   city = fields.String()
-  #   state = fields.String() 
-  #   venues = fields.List(fields.Nested(VenueSchema, many=True))
-
-  def upcoming_shows(id, city, state):
-    num_of_shows = Venue.query\
-      .with_entities(Venue.id, Show.start_time)\
-      .join(Show, id == Show.venue_id)\
-      .join(Artist, Artist.id == Show.artist_id)\
-      .filter( (Show.start_time > datetime.now()) & 
-        (Venue.city==city) &
-        (Venue.state==state) )\
-      .count()
-    return num_of_shows
-
-  dist_locale=Venue.query.with_entities((Venue.id), (Venue.city) , (Venue.state) )\
+  dist_locale=db.session.query(Venue).with_entities( (Venue.id), (Venue.city) , (Venue.state) )\
     .distinct().order_by(Venue.city).order_by(Venue.state).all()
 
   all_locations = []
   for result in dist_locale:
     venues = []
-    id = result.id
     city = result.city
     state = result.state
 
@@ -131,11 +109,9 @@ def venues():
 
     for a_venue in all_venues:
       if result.city==a_venue.city and result.state==a_venue.state: #My issue is getting another result set of all venues for me to compare their location against.
-        num_upcoming_shows = upcoming_shows(id, city, state)
         a_venue_dict = {
           'id': a_venue.id,
-          'name': a_venue.name,
-          'upcoming_shows': num_upcoming_shows
+          'name': a_venue.name
         }
         if a_venue_dict in venues: # checks for uniqueness of the venue_dict object.
           venues.remove(a_venue_dict)
@@ -148,12 +124,13 @@ def venues():
       'state': state,
       'venues': venues
     }
-    if location in all_locations: # Check if data of Shows in 'location' is already in 'all_locations' list
+
+    if location in all_locations: # Check if data of location is already in 'all_locations' list
       location={}
     else:
       all_locations.append(location)
- 
-  return render_template('pages/venues.html', areas=all_locations);
+    
+  return render_template('pages/venues.html', areas=all_locations)
 
 @app.route('/venues/search', methods=['POST'])
 def search_venues():
@@ -204,7 +181,20 @@ def show_venue(venue_id):
   past_shows = []
   upcoming_shows = []
 
-  for show in venue.shows:
+  #venue_shows = venue.shows, is an alternative to the code below. Or just directly say, 'for show in venue.shows'
+  venue_shows = db.session.query(Show).join(Venue, Show.venue_id == venue_id).\
+    join(Artist, Show.artist_id == Artist.id)
+
+  """
+  The SQLAlchemy code translates to:
+
+  SELECT shows.id AS shows_id, shows.artist_id AS shows_artist_id, 
+  shows.venue_id AS shows_venue_id, shows.start_time AS shows_start_time
+  FROM shows JOIN venues ON shows.venue_id = %(venue_id_1)s JOIN artists ON shows.artist_id = artists.id
+    
+  """
+
+  for show in venue_shows:
     a_show = {
         'artist_id': show.artist_id,
         'artist_name': show.artist.name,
@@ -216,7 +206,7 @@ def show_venue(venue_id):
     else:
         upcoming_shows.append(a_show)
 
-    # object class to dict
+  # Converts object class to dict
   data = vars(venue) 
 
   data['past_shows'] = past_shows
@@ -236,12 +226,12 @@ def create_venue_form():
 
 @app.route('/venues/create', methods=['POST'])
 def create_venue_submission():
-  #To set the FlaskForm, use:  the FlaskForm form = VenueForm(request.form, meta={'csrf': False})
+
   form = VenueForm(request.form, meta={'csrf':False})
   name = form.name.data
 
   # Validate all fields and check for unique venue name  and form.check_for_venuename(form.name.data)==True:
-  if form.validate() and form.check_for_venuename(name)==True:
+  if form.validate() and form.check_for_venuename(name):
     try:
       venue=Venue(
         name = name,
@@ -267,15 +257,13 @@ def create_venue_submission():
       db.session.close()
     artists=Artist.query.order_by(db.desc(Artist.created_at)).limit(10).all()
     venues= Venue.query.order_by(db.desc(Venue.created_at)).limit(10).all()
-    #return render_template('pages/home.html') 
 
   # If there is any invalid field
   else:
     flash(f'There are errors with the validation.')
-    flash_errors(form) #http://wtforms.simplecodes.com/docs/0.6.2/forms.html#wtforms.form.Form.errors
+    flash_errors(form) 
     form=VenueForm()
     return render_template('forms/new_venue.html', form=form)
-  # see: https://flask.palletsprojects.com/en/2.2.x/patterns/flashing/
   return render_template('pages/home.html', artists=artists, venues=venues)
 
 @app.route('/venues/<venue_id>/delete', methods=['GET'])
@@ -354,8 +342,19 @@ def show_artist(artist_id):
 
   past_shows = []
   upcoming_shows = []
+  
+  artist_shows = db.session.query(Show).join(Venue, Show.venue_id == Venue.id).\
+    join(Artist, Show.artist_id == artist_id)
+  """
+  The SQLAlchemy code translates to:
 
-  for show in artist.shows:
+  SELECT shows.id AS shows_id, shows.artist_id AS shows_artist_id, 
+  shows.venue_id AS shows_venue_id, shows.start_time AS shows_start_time
+  FROM shows JOIN venues ON shows.venue_id = venues.id JOIN artists ON shows.artist_id = %(artist_id_1)s
+  
+  """
+
+  for show in artist_shows:
     a_show = {
         'venue_id': show.venue_id,
         'venue_name': show.venue.name,
@@ -367,7 +366,7 @@ def show_artist(artist_id):
     else:
         upcoming_shows.append(a_show)
 
-    # object class to dict
+  # Converts object class to dict. Alternative method to my created ,as_dict() function
   data = vars(artist) 
 
   data['past_shows'] = past_shows
@@ -383,9 +382,7 @@ def show_artist(artist_id):
 def edit_artist(artist_id):
   get_artist = Artist.query.get_or_404(artist_id, description='There is no artist data with the ID {}'.format(artist_id))
   artist_dict = get_artist._asdict()
-  form = ArtistForm(obj=get_artist) # Or we can have form = ArtistForm(data=artist_dict)
-  #  https://wtforms.readthedocs.io/en/2.3.x/forms/#:~:text=obj%20%E2%80%93%20If%20formdata,are%20not%20present.
-  
+  form = ArtistForm(obj=get_artist) 
   return render_template('forms/edit_artist.html', form=form, artist=artist_dict)
 
 @app.route('/artists/<int:artist_id>/edit', methods=['POST'])
@@ -450,11 +447,7 @@ def edit_artist_submission(artist_id):
     else:
       if form.validate() and form.check_for_artistname(form.name.data):
         try:
-          #Note: Putting commas after values, e.g. 
-          # artist.name = form.name.data,
-          # artist.city = form.city.data, may corrupt the form.attr.data value being sent. It can give ('Angela Yu',) instead of Angela Yu as the name or ('False',) instead of False, causing errors.
           artist.name = form.name.data 
-          #print(artist.name)
           artist.city = form.city.data
           artist.state = form.state.data
           artist.phone = form.phone.data
@@ -682,19 +675,20 @@ def create_show_submission():
         venue=venue
       )
       # How can I use the association_proxy safely, to have for example, artist.venues.append(venue) 
-      print('The shows of the artist '+ artist.name)
-      for assoc in artist.shows:
-        print("Start time: ")
-        print(assoc.start_time)
-        print("The venue: ")
-        print( assoc.venue.name)
+
+      # print('The shows of the artist '+ artist.name)
+      # for assoc in artist.shows:
+      #   print("Start time: ")
+      #   print(assoc.start_time)
+      #   print("The venue: ")
+      #   print( assoc.venue.name)
       
-      print('The shows at the venue '+ venue.name)
-      for assoc in venue.shows:
-        print("Start time: ")
-        print(assoc.start_time)
-        print("The artist: ")
-        print( assoc.artist.name)
+      # print('The shows at the venue '+ venue.name)
+      # for assoc in venue.shows:
+      #   print("Start time: ")
+      #   print(assoc.start_time)
+      #   print("The artist: ")
+      #   print( assoc.artist.name)
 
       db.session.add(show)
       db.session.commit()
